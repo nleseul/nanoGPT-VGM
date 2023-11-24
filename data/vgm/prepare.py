@@ -7,7 +7,7 @@ import pyvgm
 import random
 
 vgm_paths = [
-    "../VGM_big",
+    #"../VGM_big",
     "../zophar_scrape/Zophar.net VGM cleaned"
 ]
 
@@ -52,7 +52,6 @@ else:
         for path, dirs, files in os.walk(vgm_path):
             for filename in fnmatch.filter(files, "*.vg?"):
                 full_path = os.path.join(path, filename)
-                print(full_path)
                 
                 if filename.endswith("z"):
                     in_file = gzip.open(full_path, 'rb')
@@ -60,6 +59,13 @@ else:
                     in_file = open(full_path, 'rb')
                 
                 vgm = pyvgm.VGMFile.load(in_file)
+
+                if vgm.total_duration < 22050: # Half a second
+                    print(f"SFX: {full_path}")
+                    continue
+                else:
+                    print(full_path)
+
                 for command in vgm.commands:
                     if not isinstance(command, pyvgm.PCMDataCommand) and not isinstance(command, pyvgm.PCMRamWriteCommand):
                         vocabulary_set.add(command.data.hex())
@@ -90,7 +96,6 @@ for vgm_path in vgm_paths:
     for path, dirs, files in os.walk(vgm_path):
         for filename in fnmatch.filter(files, "*.vg?"):
             full_path = os.path.join(path, filename)
-            print(full_path)
             
             if filename.endswith("z"):
                 in_file = gzip.open(full_path, 'rb')
@@ -98,7 +103,13 @@ for vgm_path in vgm_paths:
                 in_file = open(full_path, 'rb')
 
             vgm = pyvgm.VGMFile.load(in_file)
-            
+
+            if vgm.total_duration < 22050: # Half a second
+                print(f"SFX: {full_path}")
+                continue
+            else:
+                print(full_path)
+
             work = bytearray()
             for command in vgm.commands:
                 if not isinstance(command, pyvgm.PCMDataCommand) and not isinstance(command, pyvgm.PCMRamWriteCommand):
@@ -139,5 +150,5 @@ optimized_vocab_size = math.ceil(len(vocabulary) / 64) * 64
 print(f"vocabulary size={len(vocabulary)}, optimized to {optimized_vocab_size}")
 print(f"total duration={total_duration} ({(total_duration / 44100) / 60} minutes)")
 
-with open("meta.pkl", 'w+b') as meta_out:
+with open("data/vgm/meta.pkl", 'w+b') as meta_out:
     pickle.dump( { 'vocab_size': optimized_vocab_size }, meta_out)

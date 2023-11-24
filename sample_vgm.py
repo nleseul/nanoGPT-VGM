@@ -23,7 +23,7 @@ top_k = 200 # retain only the top_k most likely tokens, clamp others to have 0 p
 seed = 1337
 device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16' # 'float32' or 'bfloat16' or 'float16'
-compile = False # use PyTorch 2.0 to compile the model to be faster
+compile = True # use PyTorch 2.0 to compile the model to be faster
 exec(open('configurator.py').read()) # overrides from command line or config file
 # -----------------------------------------------------------------------------
 
@@ -61,8 +61,10 @@ vocab_map = {}
 for index, token in enumerate(vocab_list):
     vocab_map[token] = index
 
-# encode the beginning of the prompt
 end_id = vocab_map["*END*"]
+terminator = (torch.tensor([end_id], dtype=torch.long, device=device)[None, ...])
+
+# encode the beginning of the prompt
 start_ids = [end_id]
 if start_file is not None and len(start_file) > 0:
     start_ids = []
@@ -91,11 +93,11 @@ x = (torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...])
 with torch.no_grad():
     with ctx:
         for k in range(num_samples):
-            terminator = (torch.tensor([end_id], dtype=torch.long, device=device)[None, ...])
             y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k, terminator_idx=terminator)
             
-            vgm_bytes = bytearray()
+            vgm = pyvgm.VGMFile()
             token_count = 0
+            tick_count = 0
             for token_index in y[0].tolist():
                 if token_index == end_id:
                     if token_count == 0:
@@ -105,27 +107,16 @@ with torch.no_grad():
                         break
                 else:
                     token = vocab_list[token_index]
-                    vgm_bytes += bytes.fromhex(token)
-                    token_count += 1
-            
-            bytestream = io.BytesIO(vgm_bytes)
-            vgm = pyvgm.VGMFile()
-            tick_count = 0
-            while True:
-                command = pyvgm.VGMFile.command_from_bytes(bytestream)
-                if command is None:
-                    break;
-                else:
-                    if isinstance(command, pyvgm.WaitCommand):
-                        tick_count += command.ticks
-                    vgm.add_command(command)
+                    command = pyvgm.VGMFile.command_from_bytes(io.BytesIO(bytes.fromhex(token)))
+                    if command is None:
+                        break;
+                    else:
+                        if isinstance(command, pyvgm.WaitCommand):
+                            tick_count += command.ticks
+                        vgm.add_command(command)
+                        token_count += 1
                     
             filename = f"{output_name}{k}.vgm"
             with open(filename, 'w+b') as out_file:
                 vgm.save(out_file)
             print(f"{filename} - {token_count} tokens, {tick_count} ticks")
-            
-            
-            
-            #print(decode(y[0].tolist()))
-            #print('---------------')
